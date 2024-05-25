@@ -10,6 +10,12 @@ import (
 	"os"
 )
 
+type RequestLine struct {
+	HttpMethod    string
+	RequestTarget string
+	HttpVersion   string
+}
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
@@ -40,13 +46,39 @@ func main() {
 		}
 
 		splittedBuffer := strings.Split(string(buffer), "\r\n")
-		requestLine := strings.Split(splittedBuffer[0], " ")
+		requestLine := constructRequestLine(strings.Split(splittedBuffer[0], " "))
 
-		if requestLine[1] == "/" {
-			conn.Write([]byte("HTTP/1.1 200 OK\r\n\r\n"))
+		if requestLine.RequestTarget == "/" {
+			response := "HTTP/1.1 200 OK\r\n\r\n"
+			conn.Write([]byte(response))
+			continue
+		}
+
+		if strings.Contains(requestLine.RequestTarget, "/echo/") {
+			targetResources := strings.Split(requestLine.RequestTarget, "/")
+			finalResourse := targetResources[len(targetResources)-1]
+
+			response := fmt.Sprintf(`HTTP/1.1 200 OK\r\n
+				Content-Type: text/plain\r\n
+				Content-Length: %d\r\n\r\n
+				%s`,
+				len(finalResourse),
+				finalResourse)
+
+			conn.Write([]byte(response))
 			continue
 		}
 
 		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 	}
+}
+
+func constructRequestLine(requestLine []string) RequestLine {
+	requestLineStruct := &RequestLine{
+		HttpMethod:    requestLine[0],
+		RequestTarget: requestLine[1],
+		HttpVersion:   requestLine[2],
+	}
+
+	return *requestLineStruct
 }
