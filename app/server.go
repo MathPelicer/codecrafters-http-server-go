@@ -58,10 +58,7 @@ func main() {
 			targetResources := strings.Split(requestLine.RequestTarget, "/")
 			finalResourse := targetResources[len(targetResources)-1]
 
-			response := fmt.Sprintf(`HTTP/1.1 200 OK\r\n
-				Content-Type: text/plain\r\n
-				Content-Length: %d\r\n\r\n
-				%s`,
+			response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
 				len(finalResourse),
 				finalResourse)
 
