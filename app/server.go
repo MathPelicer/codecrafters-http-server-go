@@ -3,17 +3,40 @@ package main
 import (
 	"fmt"
 	"io"
-	"strings"
-
-	// Uncomment this block to pass the first stage
 	"net"
 	"os"
+	"strings"
 )
 
-type RequestLine struct {
+type Request struct {
 	HttpMethod    string
 	RequestTarget string
 	HttpVersion   string
+	Headers       map[string]string
+}
+
+func ParseRequest(request []string) *Request {
+	firstLine := strings.Split(request[0], " ")
+
+	headers := make(map[string]string)
+	for _, element := range request[1:] {
+		if strings.Contains(element, "\x00") {
+			break
+		}
+
+		if element != "" {
+			headerSplit := strings.Split(element, ":")
+			headers[headerSplit[0]] = strings.TrimSpace(headerSplit[1])
+			continue
+		}
+	}
+
+	return &Request{
+		HttpMethod:    firstLine[0],
+		RequestTarget: firstLine[1],
+		HttpVersion:   firstLine[2],
+		Headers:       headers,
+	}
 }
 
 func main() {
@@ -46,21 +69,27 @@ func main() {
 		}
 
 		splittedBuffer := strings.Split(string(buffer), "\r\n")
-		requestLine := constructRequestLine(strings.Split(splittedBuffer[0], " "))
+		request := ParseRequest(splittedBuffer)
 
-		if requestLine.RequestTarget == "/" {
+		if request.RequestTarget == "/" {
 			response := "HTTP/1.1 200 OK\r\n\r\n"
 			conn.Write([]byte(response))
 			continue
 		}
 
-		if strings.Contains(requestLine.RequestTarget, "/echo/") {
-			targetResources := strings.Split(requestLine.RequestTarget, "/")
+		if strings.Contains(request.RequestTarget, "/echo/") {
+			targetResources := strings.Split(request.RequestTarget, "/")
 			finalResourse := targetResources[len(targetResources)-1]
 
-			response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
-				len(finalResourse),
-				finalResourse)
+			response := constructTextResponse(len(finalResourse), finalResourse)
+
+			conn.Write([]byte(response))
+			continue
+		}
+
+		if request.RequestTarget == "/user-agent" {
+			response := constructTextResponse(len(request.Headers["User-Agent"]),
+				request.Headers["User-Agent"])
 
 			conn.Write([]byte(response))
 			continue
@@ -70,12 +99,10 @@ func main() {
 	}
 }
 
-func constructRequestLine(requestLine []string) RequestLine {
-	requestLineStruct := &RequestLine{
-		HttpMethod:    requestLine[0],
-		RequestTarget: requestLine[1],
-		HttpVersion:   requestLine[2],
-	}
+func constructTextResponse(contentLen int, content string) string {
+	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
+		contentLen,
+		content)
 
-	return *requestLineStruct
+	return response
 }
