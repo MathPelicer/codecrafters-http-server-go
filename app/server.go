@@ -43,8 +43,6 @@ func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
 
-	// Uncomment this block to pass the first stage
-	//
 	l, err := net.Listen("tcp", "0.0.0.0:4221")
 	if err != nil {
 		fmt.Println("Failed to bind to port 4221")
@@ -60,43 +58,44 @@ func main() {
 			os.Exit(1)
 		}
 
-		buffer := make([]byte, 1024)
-		_, err = conn.Read(buffer)
-		if err != nil {
-			if err != io.EOF {
-				os.Exit(1)
-			}
-		}
-
-		splittedBuffer := strings.Split(string(buffer), "\r\n")
-		request := ParseRequest(splittedBuffer)
-
-		if request.RequestTarget == "/" {
-			response := "HTTP/1.1 200 OK\r\n\r\n"
-			conn.Write([]byte(response))
-			continue
-		}
-
-		if strings.Contains(request.RequestTarget, "/echo/") {
-			targetResources := strings.Split(request.RequestTarget, "/")
-			finalResourse := targetResources[len(targetResources)-1]
-
-			response := constructTextResponse(len(finalResourse), finalResourse)
-
-			conn.Write([]byte(response))
-			continue
-		}
-
-		if request.RequestTarget == "/user-agent" {
-			response := constructTextResponse(len(request.Headers["User-Agent"]),
-				request.Headers["User-Agent"])
-
-			conn.Write([]byte(response))
-			continue
-		}
-
-		conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		go handleConnection(conn)
 	}
+}
+
+func handleConnection(conn net.Conn) {
+	buffer := make([]byte, 1024)
+	_, err := conn.Read(buffer)
+	if err != nil {
+		if err != io.EOF {
+			os.Exit(1)
+		}
+	}
+
+	splittedBuffer := strings.Split(string(buffer), "\r\n")
+	request := ParseRequest(splittedBuffer)
+
+	if request.RequestTarget == "/" {
+		response := "HTTP/1.1 200 OK\r\n\r\n"
+		conn.Write([]byte(response))
+	}
+
+	if strings.Contains(request.RequestTarget, "/echo/") {
+		targetResources := strings.Split(request.RequestTarget, "/")
+		finalResourse := targetResources[len(targetResources)-1]
+
+		response := constructTextResponse(len(finalResourse), finalResourse)
+
+		conn.Write([]byte(response))
+	}
+
+	if request.RequestTarget == "/user-agent" {
+		response := constructTextResponse(len(request.Headers["User-Agent"]),
+			request.Headers["User-Agent"])
+
+		conn.Write([]byte(response))
+	}
+
+	conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 }
 
 func constructTextResponse(contentLen int, content string) string {
