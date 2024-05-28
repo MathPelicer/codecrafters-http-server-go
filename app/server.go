@@ -65,6 +65,7 @@ func main() {
 func handleConnection(conn net.Conn) {
 	buffer := make([]byte, 1024)
 	_, err := conn.Read(buffer)
+
 	if err != nil {
 		if err != io.EOF {
 			os.Exit(1)
@@ -79,12 +80,23 @@ func handleConnection(conn net.Conn) {
 		conn.Write([]byte(response))
 	}
 
-	if strings.Contains(request.RequestTarget, "/echo/") {
-		targetResources := strings.Split(request.RequestTarget, "/")
-		finalResourse := targetResources[len(targetResources)-1]
+	if strings.HasPrefix(request.RequestTarget, "/echo/") {
+		pathParam := getFinalPathParam(request.RequestTarget)
 
-		response := constructTextResponse(len(finalResourse), finalResourse)
+		response := constructTextResponse(len(pathParam), pathParam)
 
+		conn.Write([]byte(response))
+	}
+
+	if strings.HasPrefix(request.RequestTarget, "/files/") {
+		pathParam := getFinalPathParam(request.RequestTarget)
+		finalResourse, err := readFileContent(pathParam)
+
+		if err != nil {
+			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+		}
+
+		response := constructOctetStreamResponse(len(finalResourse), finalResourse)
 		conn.Write([]byte(response))
 	}
 
@@ -98,10 +110,35 @@ func handleConnection(conn net.Conn) {
 	conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 }
 
+func getFinalPathParam(requestTarget string) string {
+	targetResources := strings.Split(requestTarget, "/")
+	return targetResources[len(targetResources)-1]
+}
+
 func constructTextResponse(contentLen int, content string) string {
 	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
 		contentLen,
 		content)
 
 	return response
+}
+
+func constructOctetStreamResponse(contentLen int, content string) string {
+	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s",
+		contentLen,
+		content)
+
+	return response
+}
+
+func readFileContent(filename string) (fileContent string, err error) {
+	filePath := "/tmp/data/codecrafters.io/http-server-tester/" + filename
+	readFileContent, err := os.ReadFile(filePath)
+
+	if err != nil {
+		return
+	}
+
+	fileContent = string(readFileContent)
+	return
 }
