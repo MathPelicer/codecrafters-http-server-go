@@ -8,11 +8,19 @@ import (
 	"strings"
 )
 
+const (
+	FILE_PATH = "/tmp/data/codecrafters.io/http-server-tester/"
+	STATUS404 = "HTTP/1.1 404 Not Found\r\n\r\n"
+	STATUS201 = "HTTP/1.1 201 Created\r\n\r\n"
+	STATUS200 = "HTTP/1.1 200 OK\r\n\r\n"
+)
+
 type Request struct {
 	HttpMethod    string
 	RequestTarget string
 	HttpVersion   string
 	Headers       map[string]string
+	Body          string
 }
 
 func ParseRequest(request []string) *Request {
@@ -36,6 +44,7 @@ func ParseRequest(request []string) *Request {
 		RequestTarget: firstLine[1],
 		HttpVersion:   firstLine[2],
 		Headers:       headers,
+		Body:          strings.Trim(request[len(request)-1], "\x00"),
 	}
 }
 
@@ -75,14 +84,32 @@ func handleConnection(conn net.Conn) {
 	splittedBuffer := strings.Split(string(buffer), "\r\n")
 	request := ParseRequest(splittedBuffer)
 
+	switch request.HttpMethod {
+	case "GET":
+		handleGetMethod(request, conn)
+	case "POST":
+		handlePostMethod(request, conn)
+	}
+
+	conn.Write([]byte(STATUS404))
+}
+
+func handlePostMethod(request *Request, conn net.Conn) {
+	if strings.HasPrefix(request.RequestTarget, "/files/") {
+		pathParam := getFinalPathParam(request.RequestTarget)
+		writeFileContent(pathParam, request.Body)
+
+		conn.Write([]byte(STATUS201))
+	}
+}
+
+func handleGetMethod(request *Request, conn net.Conn) {
 	if request.RequestTarget == "/" {
-		response := "HTTP/1.1 200 OK\r\n\r\n"
-		conn.Write([]byte(response))
+		conn.Write([]byte(STATUS200))
 	}
 
 	if strings.HasPrefix(request.RequestTarget, "/echo/") {
 		pathParam := getFinalPathParam(request.RequestTarget)
-
 		response := constructTextResponse(len(pathParam), pathParam)
 
 		conn.Write([]byte(response))
@@ -93,7 +120,7 @@ func handleConnection(conn net.Conn) {
 		finalResourse, err := readFileContent(pathParam)
 
 		if err != nil {
-			conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
+			conn.Write([]byte(STATUS404))
 		}
 
 		response := constructOctetStreamResponse(len(finalResourse), finalResourse)
@@ -106,8 +133,6 @@ func handleConnection(conn net.Conn) {
 
 		conn.Write([]byte(response))
 	}
-
-	conn.Write([]byte("HTTP/1.1 404 Not Found\r\n\r\n"))
 }
 
 func getFinalPathParam(requestTarget string) string {
@@ -132,7 +157,7 @@ func constructOctetStreamResponse(contentLen int, content string) string {
 }
 
 func readFileContent(filename string) (fileContent string, err error) {
-	filePath := "/tmp/data/codecrafters.io/http-server-tester/" + filename
+	filePath := FILE_PATH + filename
 	readFileContent, err := os.ReadFile(filePath)
 
 	if err != nil {
@@ -141,4 +166,21 @@ func readFileContent(filename string) (fileContent string, err error) {
 
 	fileContent = string(readFileContent)
 	return
+}
+
+func writeFileContent(filename string, fileContent string) {
+	filePath := FILE_PATH + filename
+	file, err := os.Create(filePath)
+
+	if err != nil {
+		panic(err)
+	}
+
+	defer file.Close()
+
+	_, err = file.WriteString(fileContent)
+
+	if err != nil {
+		panic(err)
+	}
 }
