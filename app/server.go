@@ -34,7 +34,7 @@ func ParseRequest(request []string) *Request {
 
 		if element != "" {
 			headerSplit := strings.Split(element, ":")
-			headers[headerSplit[0]] = strings.TrimSpace(headerSplit[1])
+			headers[strings.ToLower(headerSplit[0])] = strings.TrimSpace(headerSplit[1])
 			continue
 		}
 	}
@@ -104,15 +104,24 @@ func handlePostMethod(request *Request, conn net.Conn) {
 }
 
 func handleGetMethod(request *Request, conn net.Conn) {
+	var response string
+
 	if request.RequestTarget == "/" {
 		conn.Write([]byte(STATUS200))
 	}
 
 	if strings.HasPrefix(request.RequestTarget, "/echo/") {
 		pathParam := getFinalPathParam(request.RequestTarget)
-		response := constructTextResponse(len(pathParam), pathParam)
+		encodingType, isValid := isEncodingTypeValid(request)
+		if isValid {
+			response = constructEncodedTextResponse(pathParam, encodingType)
+			conn.Write([]byte(response))
+			return
+		}
 
+		response = constructTextResponse(pathParam)
 		conn.Write([]byte(response))
+		return
 	}
 
 	if strings.HasPrefix(request.RequestTarget, "/files/") {
@@ -121,18 +130,30 @@ func handleGetMethod(request *Request, conn net.Conn) {
 
 		if err != nil {
 			conn.Write([]byte(STATUS404))
+			return
 		}
 
-		response := constructOctetStreamResponse(len(finalResourse), finalResourse)
+		response := constructOctetStreamResponse(finalResourse)
 		conn.Write([]byte(response))
+		return
 	}
 
 	if request.RequestTarget == "/user-agent" {
-		response := constructTextResponse(len(request.Headers["User-Agent"]),
-			request.Headers["User-Agent"])
+		response := constructTextResponse(request.Headers["user-agent"])
 
 		conn.Write([]byte(response))
+		return
 	}
+}
+
+func isEncodingTypeValid(request *Request) (encodingType string, isValidEncoding bool) {
+	encodingType, isEncoded := request.Headers["accept-encoding"]
+	if isEncoded &&
+		encodingType == "gzip" {
+		return encodingType, true
+	}
+
+	return "", false
 }
 
 func getFinalPathParam(requestTarget string) string {
@@ -140,17 +161,26 @@ func getFinalPathParam(requestTarget string) string {
 	return targetResources[len(targetResources)-1]
 }
 
-func constructTextResponse(contentLen int, content string) string {
+func constructTextResponse(content string) string {
 	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
-		contentLen,
+		len(content),
 		content)
 
 	return response
 }
 
-func constructOctetStreamResponse(contentLen int, content string) string {
+func constructEncodedTextResponse(content string, encoding string) string {
+	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Encoding: %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
+		encoding,
+		len(content),
+		content)
+
+	return response
+}
+
+func constructOctetStreamResponse(content string) string {
 	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: %d\r\n\r\n%s",
-		contentLen,
+		len(content),
 		content)
 
 	return response
