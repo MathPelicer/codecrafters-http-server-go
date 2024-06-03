@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"compress/gzip"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strings"
@@ -149,18 +152,20 @@ func handleGetMethod(request *Request, conn net.Conn) {
 func isAnyEncodingTypeValid(request *Request) (encodingTypes []string, isValidEncoding bool) {
 	acceptEncondings, isEncoded := request.Headers["accept-encoding"]
 
-	if isEncoded {
-		encondings := strings.Split(acceptEncondings, ", ")
+	if !isEncoded {
+		return encodingTypes, false
+	}
 
-		for _, enconding := range encondings {
-			if enconding == "gzip" {
-				encodingTypes = append(encodingTypes, enconding)
-			}
-		}
+	encondings := strings.Split(acceptEncondings, ", ")
 
-		if encodingTypes != nil {
-			return encodingTypes, true
+	for _, enconding := range encondings {
+		if enconding == "gzip" {
+			encodingTypes = append(encodingTypes, enconding)
 		}
+	}
+
+	if encodingTypes != nil {
+		return encodingTypes, true
 	}
 
 	return encodingTypes, false
@@ -185,10 +190,22 @@ func constructEncodedTextResponse(content string, encodings []string) string {
 		encondings += encoding
 	}
 
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	_, err := gzipWriter.Write([]byte(content))
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if err := gzipWriter.Close(); err != nil {
+		log.Fatal(err)
+	}
+
 	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Encoding: %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
 		encondings,
-		len(content),
-		content)
+		len(buffer.String()),
+		buffer.String())
 
 	return response
 }
