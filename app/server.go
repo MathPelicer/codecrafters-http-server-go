@@ -112,7 +112,7 @@ func handleGetMethod(request *Request, conn net.Conn) {
 
 	if strings.HasPrefix(request.RequestTarget, "/echo/") {
 		pathParam := getFinalPathParam(request.RequestTarget)
-		encodingType, isValid := isEncodingTypeValid(request)
+		encodingType, isValid := isAnyEncodingTypeValid(request)
 		if isValid {
 			response = constructEncodedTextResponse(pathParam, encodingType)
 			conn.Write([]byte(response))
@@ -146,14 +146,24 @@ func handleGetMethod(request *Request, conn net.Conn) {
 	}
 }
 
-func isEncodingTypeValid(request *Request) (encodingType string, isValidEncoding bool) {
-	encodingType, isEncoded := request.Headers["accept-encoding"]
-	if isEncoded &&
-		encodingType == "gzip" {
-		return encodingType, true
+func isAnyEncodingTypeValid(request *Request) (encodingTypes []string, isValidEncoding bool) {
+	acceptEncondings, isEncoded := request.Headers["accept-encoding"]
+
+	if isEncoded {
+		encondings := strings.Split(acceptEncondings, ", ")
+
+		for _, enconding := range encondings {
+			if enconding == "gzip" {
+				encodingTypes = append(encodingTypes, enconding)
+			}
+		}
+
+		if encodingTypes != nil {
+			return encodingTypes, true
+		}
 	}
 
-	return "", false
+	return encodingTypes, false
 }
 
 func getFinalPathParam(requestTarget string) string {
@@ -169,9 +179,14 @@ func constructTextResponse(content string) string {
 	return response
 }
 
-func constructEncodedTextResponse(content string, encoding string) string {
+func constructEncodedTextResponse(content string, encodings []string) string {
+	encondings := ""
+	for _, encoding := range encodings {
+		encondings += encoding
+	}
+
 	response := fmt.Sprintf("HTTP/1.1 200 OK\r\nContent-Encoding: %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\n\r\n%s",
-		encoding,
+		encondings,
 		len(content),
 		content)
 
